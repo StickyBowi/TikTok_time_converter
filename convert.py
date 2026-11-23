@@ -1,7 +1,7 @@
 
 import re
 from datetime import datetime, timezone
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import requests
@@ -21,7 +21,7 @@ st.set_page_config(
 
 
 # ---------------------------------
-# DESIGN
+# CUSTOM DESIGN
 # ---------------------------------
 
 st.markdown("""
@@ -29,6 +29,7 @@ st.markdown("""
 .block-container {
     max-width: 850px;
     padding-top: 3rem;
+    padding-bottom: 3rem;
 }
 
 h1 {
@@ -76,7 +77,7 @@ div.stButton > button {
 
 
 # ---------------------------------
-# URL AND ID EXTRACTION
+# EXTRACT VIDEO ID AND USERNAME
 # ---------------------------------
 
 def extract_video_info(url):
@@ -91,10 +92,14 @@ def extract_video_info(url):
     }
 
     if parsed.scheme not in ("http", "https"):
-        raise ValueError("Enter a complete HTTPS TikTok URL.")
+        raise ValueError(
+            "Please enter a complete TikTok URL."
+        )
 
     if hostname not in allowed_hosts:
-        raise ValueError("Not a recognized TikTok URL.")
+        raise ValueError(
+            "Not a recognized TikTok URL."
+        )
 
     match = re.search(
         r"/(?:video|photo)/(\d{15,20})(?:/|$)",
@@ -103,13 +108,16 @@ def extract_video_info(url):
 
     if not match:
         raise ValueError(
-            "No video ID found. Use a full TikTok video URL."
+            "No video ID found. "
+            "Please use a full TikTok video URL."
         )
 
     video_id = int(match.group(1))
 
-    if video_id >= 2**64:
-        raise ValueError("Video ID exceeds 64 bits.")
+    if not 0 <= video_id < 2**64:
+        raise ValueError(
+            "Video ID exceeds the 64-bit range."
+        )
 
     username_match = re.search(
         r"/@([^/]+)/(?:video|photo)/",
@@ -130,18 +138,21 @@ def extract_video_info(url):
 
 def convert_timestamp(video_id):
 
+    # Extract first 32 bits
     unix_timestamp = video_id >> 32
 
+    # Convert to UTC
     utc_time = datetime.fromtimestamp(
         unix_timestamp,
         tz=timezone.utc
     )
 
+    # Convert to Swedish local time
     swedish_time = utc_time.astimezone(
         ZoneInfo("Europe/Stockholm")
     )
 
-    return unix_timestamp, swedish_time
+    return unix_timestamp, utc_time, swedish_time
 
 
 # ---------------------------------
@@ -158,7 +169,7 @@ def get_tiktok_metadata(url):
             endpoint,
             params={"url": url},
             headers={
-                "User-Agent": "TikTokTimestampTool/1.0"
+                "User-Agent": "Mozilla/5.0"
             },
             timeout=12
         )
@@ -177,6 +188,24 @@ def get_tiktok_metadata(url):
 
 
 # ---------------------------------
+# EMBEDDED PLAYER FUNCTION
+# ---------------------------------
+
+def show_tiktok_player(video_id, height=580):
+
+    player_url = (
+        "https://www.tiktok.com/player/v1/"
+        + str(video_id)
+    )
+
+    components.iframe(
+        player_url,
+        height=height,
+        scrolling=False
+    )
+
+
+# ---------------------------------
 # MAIN INTERFACE
 # ---------------------------------
 
@@ -184,8 +213,8 @@ st.title("🎬 TikTok Video Analyzer")
 
 st.markdown(
     '<div class="subtitle">'
-    'Extract video timestamps, thumbnails '
-    'and publicly available creator information.'
+    'Extract timestamps, video information '
+    'and publicly available creator details.'
     '</div>',
     unsafe_allow_html=True
 )
@@ -212,17 +241,22 @@ analyze = st.button(
 if analyze:
 
     if not url.strip():
-        st.warning("Please enter a TikTok video URL.")
+        st.warning(
+            "Please enter a TikTok video URL."
+        )
 
     else:
         try:
+
+            # Extract ID and username
             video_id, username = extract_video_info(url)
 
-            unix_timestamp, swedish_time = (
+            # Convert timestamp
+            unix_timestamp, utc_time, swedish_time = (
                 convert_timestamp(video_id)
             )
 
-            # Use a canonical URL without tracking parameters
+            # Construct canonical video URL
             if username:
                 canonical_url = (
                     f"https://www.tiktok.com/"
@@ -231,69 +265,96 @@ if analyze:
             else:
                 canonical_url = url.strip()
 
-            with st.spinner("Retrieving public video information..."):
-                metadata = get_tiktok_metadata(canonical_url)
+            # Fetch metadata
+            with st.spinner(
+                "Retrieving public video information..."
+            ):
+                metadata = get_tiktok_metadata(
+                    canonical_url
+                )
 
-            # -----------------------------
+            # ---------------------------------
             # VIDEO INFORMATION
-            # -----------------------------
+            # ---------------------------------
 
             st.subheader("Video Information")
 
+            title = (
+                metadata.get("title")
+                if metadata else None
+            )
+
+            author_name = (
+                metadata.get("author_name")
+                if metadata else None
+            )
+
+            author_url = (
+                metadata.get("author_url")
+                if metadata else None
+            )
+
+            # Two-column layout
+            col1, col2 = st.columns(
+                [1, 2],
+                gap="medium"
+            )
+
+            # SMALL EMBEDDED PLAYER
+            with col1:
+
+                show_tiktok_player(
+                    video_id,
+                    height=300
+                )
+
+            # VIDEO DETAILS
+            with col2:
+
+                if title:
+                    st.write("**Caption / Title**")
+                    st.write(title)
+
+                st.write("**Video ID**")
+                st.code(str(video_id))
+
+                st.link_button(
+                    "Open Video on TikTok",
+                    canonical_url
+                )
+
+            # ---------------------------------
+            # CREATOR INFORMATION
+            # ---------------------------------
+
+            st.subheader("Creator Information")
+
+            if author_name:
+                st.write("**Display Name:**")
+                st.write(author_name)
+
+            if username:
+                st.write("**Username:**")
+                st.write("@" + username)
+
+            if author_url:
+                st.link_button(
+                    "View Creator Profile",
+                    author_url
+                )
+
+            if not metadata:
+                st.info(
+                    "TikTok metadata could not be retrieved. "
+                    "The timestamp calculation and embedded "
+                    "players may still work."
+                )
+
+            # ---------------------------------
+            # OPTIONAL METADATA
+            # ---------------------------------
+
             if metadata:
-
-                thumbnail = metadata.get("thumbnail_url")
-                title = metadata.get("title")
-                author_name = metadata.get("author_name")
-                author_url = metadata.get("author_url")
-
-                col1, col2 = st.columns([1, 2])
-
-                with col1:
-                    if thumbnail:
-                        st.image(
-                            thumbnail,
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("No thumbnail available.")
-
-                with col2:
-                    if title:
-                        st.write("**Caption / Title**")
-                        st.write(title)
-
-                    st.write("**Video ID**")
-                    st.code(str(video_id))
-
-                    st.link_button(
-                        "Open Video on TikTok",
-                        canonical_url
-                    )
-
-                # -----------------------------
-                # CREATOR INFORMATION
-                # -----------------------------
-
-                st.subheader("Creator Information")
-
-                if author_name:
-                    st.write("**Display name:**")
-                    st.write(author_name)
-
-                if username:
-                    st.write("**Username:**")
-                    st.write("@" + username)
-
-                if author_url:
-                    st.link_button(
-                        "View Creator Profile",
-                        author_url
-                    )
-
-                # -----------------------------
-                # OPTIONAL EXTRA FIELDS
-                # -----------------------------
 
                 optional_fields = {
                     "duration": "Duration",
@@ -304,31 +365,17 @@ if analyze:
                 }
 
                 for field, label in optional_fields.items():
+
                     value = metadata.get(field)
 
                     if value is not None:
-                        st.write(f"**{label}:** {value}")
+                        st.write(
+                            f"**{label}:** {value}"
+                        )
 
-            else:
-
-                st.info(
-                    "TikTok metadata could not be retrieved. "
-                    "The timestamp calculation is still available."
-                )
-
-                st.write("**Video ID:**", video_id)
-
-                if username:
-                    st.write("**Username from URL:**", username)
-
-                st.link_button(
-                    "Open Video on TikTok",
-                    canonical_url
-                )
-
-            # -----------------------------
-            # TIMESTAMP RESULT
-            # -----------------------------
+            # ---------------------------------
+            # TIMESTAMP ANALYSIS
+            # ---------------------------------
 
             st.subheader("Timestamp Analysis")
 
@@ -344,15 +391,19 @@ if analyze:
 
             st.markdown(f"""
             <div class="result-card">
+
                 <div class="result-label">
                     Swedish Local Time
                 </div>
+
                 <div class="big-date">
                     {date_string}
                 </div>
+
                 <div class="result-value">
                     {time_string} {timezone_name}
                 </div>
+
             </div>
             """, unsafe_allow_html=True)
 
@@ -370,42 +421,58 @@ if analyze:
                     timezone_name
                 )
 
+            # ---------------------------------
+            # TECHNICAL DETAILS
+            # ---------------------------------
+
             with st.expander("Technical Details"):
 
-                binary = format(video_id, "064b")
+                binary = format(
+                    video_id,
+                    "064b"
+                )
 
-                st.write("**64-bit Binary ID**")
+                st.write("**64-bit Binary Video ID**")
                 st.code(binary)
 
                 st.write("**First 32 bits**")
                 st.code(binary[:32])
 
-                st.write("**UTC Time**")
+                st.write("**Unix Timestamp**")
+                st.code(str(unix_timestamp))
+
+                st.write("**UTC Date and Time**")
                 st.write(
-                    datetime.fromtimestamp(
-                        unix_timestamp,
-                        tz=timezone.utc
-                    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    utc_time.strftime(
+                        "%Y-%m-%d %H:%M:%S UTC"
+                    )
                 )
 
-            # -----------------------------
-            # VIDEO PREVIEW
-            # -----------------------------
-
-            with st.expander("Video Preview"):
-
-                player_url = (
-                    "https://www.tiktok.com/player/v1/"
-                    + str(video_id)
+                st.write("**Swedish Date and Time**")
+                st.write(
+                    swedish_time.strftime(
+                        "%Y-%m-%d %H:%M:%S %Z"
+                    )
                 )
 
-                components.iframe(
-                    player_url,
-                    height=580,
-                    scrolling=False
+            # ---------------------------------
+            # FULL-SIZED VIDEO PLAYER
+            # ---------------------------------
+
+            st.subheader("Video Preview")
+
+            with st.expander(
+                "Open Full Video Player",
+                expanded=False
+            ):
+
+                show_tiktok_player(
+                    video_id,
+                    height=650
                 )
 
         except (ValueError, OverflowError) as e:
+
             st.error(str(e))
 
 
@@ -417,7 +484,8 @@ st.divider()
 
 st.caption(
     "TikTok Video Analyzer | "
-    "Timestamps derived from video IDs. "
-    "Timezone: Europe/Stockholm. "
-    "Metadata availability depends on TikTok."
+    "Timestamps derived from the first 32 bits "
+    "of TikTok video IDs. "
+    "Times displayed in Europe/Stockholm. "
+    "Creator metadata depends on TikTok availability."
 )
