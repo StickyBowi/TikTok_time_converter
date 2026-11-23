@@ -294,7 +294,6 @@ if analyze:
                 if metadata else None
             )
 
-            # Two-column layout
             col1, col2 = st.columns(
                 [1, 2],
                 gap="medium"
@@ -373,19 +372,26 @@ if analyze:
                             f"**{label}:** {value}"
                         )
 
+            # ---------------------------------
+            # TIMESTAMP ANALYSIS
+            # ---------------------------------
 
-# ---------------------------------
-# TIMESTAMP ANALYSIS
-# ---------------------------------
+            st.subheader("Timestamp Analysis")
 
-st.subheader("Timestamp Analysis")
+            date_string = swedish_time.strftime(
+                "%d %B %Y"
+            )
 
-date_string = swedish_time.strftime("%d %B %Y")
-time_string = swedish_time.strftime("%H:%M:%S")
-timezone_name = swedish_time.tzname()
+            time_string = swedish_time.strftime(
+                "%H:%M:%S"
+            )
 
-st.markdown(
-    f"""
+            timezone_name = swedish_time.tzname()
+
+            # FIXED HTML RENDERING:
+            # HTML starts at the beginning of the line.
+            st.markdown(
+                f"""
 <div class="result-card">
     <div class="result-label">
         Swedish Local Time
@@ -398,23 +404,22 @@ st.markdown(
     </div>
 </div>
 """,
-    unsafe_allow_html=True
-)
+                unsafe_allow_html=True
+            )
 
-col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2)
 
-with col1:
-    st.metric(
-        "Unix Timestamp",
-        str(unix_timestamp)
-    )
+            with col1:
+                st.metric(
+                    "Unix Timestamp",
+                    str(unix_timestamp)
+                )
 
-with col2:
-    st.metric(
-        "Timezone",
-        timezone_name
-    )
-
+            with col2:
+                st.metric(
+                    "Timezone",
+                    timezone_name
+                )
 
             # ---------------------------------
             # TECHNICAL DETAILS
