@@ -373,53 +373,48 @@ if analyze:
                             f"**{label}:** {value}"
                         )
 
-            # ---------------------------------
-            # TIMESTAMP ANALYSIS
-            # ---------------------------------
 
-            st.subheader("Timestamp Analysis")
+# ---------------------------------
+# TIMESTAMP ANALYSIS
+# ---------------------------------
 
-            date_string = swedish_time.strftime(
-                "%d %B %Y"
-            )
+st.subheader("Timestamp Analysis")
 
-            time_string = swedish_time.strftime(
-                "%H:%M:%S"
-            )
+date_string = swedish_time.strftime("%d %B %Y")
+time_string = swedish_time.strftime("%H:%M:%S")
+timezone_name = swedish_time.tzname()
 
-            timezone_name = swedish_time.tzname()
+st.markdown(
+    f"""
+<div class="result-card">
+    <div class="result-label">
+        Swedish Local Time
+    </div>
+    <div class="big-date">
+        {date_string}
+    </div>
+    <div class="result-value">
+        {time_string} {timezone_name}
+    </div>
+</div>
+""",
+    unsafe_allow_html=True
+)
 
-            st.markdown(f"""
-            <div class="result-card">
+col1, col2 = st.columns(2)
 
-                <div class="result-label">
-                    Swedish Local Time
-                </div>
+with col1:
+    st.metric(
+        "Unix Timestamp",
+        str(unix_timestamp)
+    )
 
-                <div class="big-date">
-                    {date_string}
-                </div>
+with col2:
+    st.metric(
+        "Timezone",
+        timezone_name
+    )
 
-                <div class="result-value">
-                    {time_string} {timezone_name}
-                </div>
-
-            </div>
-            """, unsafe_allow_html=True)
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.metric(
-                    "Unix Timestamp",
-                    str(unix_timestamp)
-                )
-
-            with col2:
-                st.metric(
-                    "Timezone",
-                    timezone_name
-                )
 
             # ---------------------------------
             # TECHNICAL DETAILS
